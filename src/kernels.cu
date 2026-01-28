@@ -35,7 +35,6 @@ __global__ void traceKernel(const T* input, T* output, size_t rows, size_t cols,
     __syncthreads();
   }
   
-  // 结果
   if (tid == 0) output[blockIdx.x] = sdata[0];
 }
 
@@ -95,67 +94,49 @@ __global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,
   
   if (i >= tgt_len) return;
   
-  int kv_h = h * kv_heads / q_heads;  // GQA 头映射
+  int kv_h = h * kv_heads / q_heads;
   float scale = 1.0f / sqrtf((float)head_dim);
   
-  // 计算偏移量
   int q_offset = ((b * tgt_len + i) * q_heads + h) * head_dim;
-  int k_base = (b * src_len * kv_heads + kv_h) * head_dim;
-  int v_base = k_base;
+  int k_base = ((b * src_len + 0) * kv_heads + kv_h) * head_dim;
   int o_offset = q_offset;
   
-  // softmax
-  float max_val = -INFINITY;
-  float sum_exp = 0.0f;
+  int max_j = is_causal ? (i + 1) : src_len;
   
-  // 第一遍计算最大值
-  for (int j = 0; j < src_len; j++) {
-    if (is_causal && j > i) break;
-    
+  float max_val = -INFINITY;
+  for (int j = 0; j < max_j; j++) {
     float score = 0.0f;
+    int kv_offset = ((b * src_len + j) * kv_heads + kv_h) * head_dim;
     for (int d = 0; d < head_dim; d++) {
-      float q_val = (float)Q[q_offset + d];
-      float k_val = (float)K[k_base + j * kv_heads * head_dim + d];
-      score += q_val * k_val;
+      score += (float)Q[q_offset + d] * (float)K[kv_offset + d];
     }
     score *= scale;
     max_val = fmaxf(max_val, score);
   }
   
-  // 第二遍计算指数和
-  for (int j = 0; j < src_len; j++) {
-    if (is_causal && j > i) break;
-    
+  float sum_exp = 0.0f;
+  for (int j = 0; j < max_j; j++) {
     float score = 0.0f;
+    int kv_offset = ((b * src_len + j) * kv_heads + kv_h) * head_dim;
     for (int d = 0; d < head_dim; d++) {
-      float q_val = (float)Q[q_offset + d];
-      float k_val = (float)K[k_base + j * kv_heads * head_dim + d];
-      score += q_val * k_val;
+      score += (float)Q[q_offset + d] * (float)K[kv_offset + d];
     }
     score *= scale;
     sum_exp += expf(score - max_val);
   }
   
-  // 第三遍计算加权和
   for (int d = 0; d < head_dim; d++) {
     float out_val = 0.0f;
-    
-    for (int j = 0; j < src_len; j++) {
-      if (is_causal && j > i) break;
-      
+    for (int j = 0; j < max_j; j++) {
       float score = 0.0f;
+      int kv_offset = ((b * src_len + j) * kv_heads + kv_h) * head_dim;
       for (int d2 = 0; d2 < head_dim; d2++) {
-        float q_val = (float)Q[q_offset + d2];
-        float k_val = (float)K[k_base + j * kv_heads * head_dim + d2];
-        score += q_val * k_val;
+        score += (float)Q[q_offset + d2] * (float)K[kv_offset + d2];
       }
       score *= scale;
-      
       float attn_weight = expf(score - max_val) / sum_exp;
-      float v_val = (float)V[v_base + j * kv_heads * head_dim + d];
-      out_val += attn_weight * v_val;
+      out_val += attn_weight * (float)V[kv_offset + d];
     }
-    
     O[o_offset + d] = (T)out_val;
   }
 }
