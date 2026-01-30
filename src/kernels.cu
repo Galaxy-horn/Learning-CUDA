@@ -17,7 +17,7 @@
  * @param cols Number of columns in the matrix.
  * @return The trace (sum of diagonal values) of the matrix.
  */
-// 并行归约
+//并行归约
 template <typename T>
 __global__ void traceKernel(const T* input, T* output, size_t rows, size_t cols, size_t diag_len) {
   extern __shared__ char shared_mem[];
@@ -29,7 +29,7 @@ __global__ void traceKernel(const T* input, T* output, size_t rows, size_t cols,
   sdata[tid] = (i < diag_len) ? input[i * cols + i] : T(0);
   __syncthreads();
   
-  // 共享内存归约
+  //共享内存归约
   for (int s = blockDim.x / 2; s > 0; s >>= 1) {
     if (tid < s) sdata[tid] += sdata[tid + s];
     __syncthreads();
@@ -49,6 +49,7 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
   
   int threads = 256;
   int blocks = (diag_len + threads - 1) / threads;
+  //blocks处理子对角段，块内用共享内存做规约
   
   T* d_output;
   RUNTIME_CHECK(cudaMalloc(&d_output, blocks * sizeof(T)));
@@ -83,27 +84,27 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
  * @param[in] head_dim Dimension size of each attention head
  * @param[in] is_causal Whether to apply causal masking
  */
-// Flash Attention核函数
+//FlashAttention核函数
 template <typename T>
-__global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,
-                                      int batch_size, int tgt_len, int src_len,
-                                      int q_heads, int kv_heads, int head_dim, bool is_causal) {
+__global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,int batch_size, int tgt_len, int src_len,int q_heads, int kv_heads, int head_dim, bool is_causal) {
+  //线程块映射blockIdx.z=batch，blockIdx.y=head，blockIdx.x负责一段target序列
   int b = blockIdx.z;
   int h = blockIdx.y;
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   
   if (i >= tgt_len) return;
   
+  //GQAqueryhead映射到kvhead
   int kv_h = h * kv_heads / q_heads;
   float scale = 1.0f / sqrtf((float)head_dim);
   
   int q_offset = ((b * tgt_len + i) * q_heads + h) * head_dim;
-  int k_base = ((b * src_len + 0) * kv_heads + kv_h) * head_dim;
   int o_offset = q_offset;
   
   int max_j = is_causal ? (i + 1) : src_len;
   
   float max_val = -INFINITY;
+  //第一次遍历求行内最大值，做数值稳定softmax
   for (int j = 0; j < max_j; j++) {
     float score = 0.0f;
     int kv_offset = ((b * src_len + j) * kv_heads + kv_h) * head_dim;
@@ -115,6 +116,7 @@ __global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,
   }
   
   float sum_exp = 0.0f;
+  //第二次遍历累加exp(score-max)
   for (int j = 0; j < max_j; j++) {
     float score = 0.0f;
     int kv_offset = ((b * src_len + j) * kv_heads + kv_h) * head_dim;
@@ -126,6 +128,7 @@ __global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,
   }
   
   for (int d = 0; d < head_dim; d++) {
+    //按softmax权重对V做加权和
     float out_val = 0.0f;
     for (int j = 0; j < max_j; j++) {
       float score = 0.0f;
@@ -162,11 +165,10 @@ void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
   
   int threads = 256;
   int blocks_x = (target_seq_len + threads - 1) / threads;
+  //grid部分x维覆盖tgt序列，y维head，z维batch
   dim3 blocks(blocks_x, query_heads, batch_size);
   
-  flashAttentionKernel<<<blocks, threads>>>(d_q, d_k, d_v, d_o,
-                                             batch_size, target_seq_len, src_seq_len,
-                                             query_heads, kv_heads, head_dim, is_causal);
+  flashAttentionKernel<<<blocks, threads>>>(d_q, d_k, d_v, d_o,batch_size, target_seq_len, src_seq_len,query_heads, kv_heads, head_dim, is_causal);
   
   RUNTIME_CHECK(cudaMemcpy(h_o.data(), d_o, q_size * sizeof(T), cudaMemcpyDeviceToHost));
   

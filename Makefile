@@ -24,7 +24,7 @@ ifeq ($(PLATFORM),nvidia)
 	PLATFORM_DEFINE := -DPLATFORM_NVIDIA
 else ifeq ($(PLATFORM),iluvatar)
     CC          	:= clang++
-	CFLAGS          := -std=c++17 -O3 -x ivcore
+	CFLAGS          := -std=c++17 -O3
     TEST_OBJ    	:= tester/tester_iluvatar.o
 	PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
 	EXTRA_LIBS		:= -lcudart -I/usr/local/corex/include -L/usr/local/corex/lib64 -fPIC
