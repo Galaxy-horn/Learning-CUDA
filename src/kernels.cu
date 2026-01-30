@@ -86,7 +86,10 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
  */
 //FlashAttention核函数
 template <typename T>
-__global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,int batch_size, int tgt_len, int src_len,int q_heads, int kv_heads, int head_dim, bool is_causal) {
+__global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,
+                                     int batch_size, int tgt_len, int src_len,
+                                     int q_heads, int kv_heads, int head_dim,
+                                     bool is_causal) {
   //线程块映射blockIdx.z=batch，blockIdx.y=head，blockIdx.x负责一段target序列
   int b = blockIdx.z;
   int h = blockIdx.y;
@@ -145,7 +148,11 @@ __global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,in
 }
 
 template <typename T>
-void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,const std::vector<T>& h_v, std::vector<T>& h_o,int batch_size, int target_seq_len, int src_seq_len, int query_heads, int kv_heads, int head_dim, bool is_causal) {       
+void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
+                    const std::vector<T>& h_v, std::vector<T>& h_o,
+                    int batch_size, int target_seq_len, int src_seq_len,
+                    int query_heads, int kv_heads, int head_dim,
+                    bool is_causal) {       
   // TODO: Implement the flash attention function
   size_t q_size = batch_size * target_seq_len * query_heads * head_dim;
   size_t kv_size = batch_size * src_seq_len * kv_heads * head_dim;
