@@ -145,10 +145,7 @@ __global__ void flashAttentionKernel(const T* Q, const T* K, const T* V, T* O,in
 }
 
 template <typename T>
-void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
-                    const std::vector<T>& h_v, std::vector<T>& h_o,
-                    int batch_size, int target_seq_len, int src_seq_len, 
-                    int query_heads, int kv_heads, int head_dim, bool is_causal) {       
+void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,const std::vector<T>& h_v, std::vector<T>& h_o,int batch_size, int target_seq_len, int src_seq_len, int query_heads, int kv_heads, int head_dim, bool is_causal) {       
   // TODO: Implement the flash attention function
   size_t q_size = batch_size * target_seq_len * query_heads * head_dim;
   size_t kv_size = batch_size * src_seq_len * kv_heads * head_dim;
