@@ -35,7 +35,6 @@ __global__ void traceKernel(const T* input, T* output, size_t rows, size_t cols,
     __syncthreads();
   }
   
-  if (tid == 0) output[blockIdx.x] = sdata[0];
 }
 
 template <typename T>
