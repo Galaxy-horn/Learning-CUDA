@@ -56,6 +56,7 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
   RUNTIME_CHECK(cudaMalloc(&d_output, blocks * sizeof(T)));
   
   traceKernel<<<blocks, threads, threads * sizeof(T)>>>(d_input, d_output, rows, cols, diag_len);
+  RUNTIME_CHECK(cudaGetLastError());  // 捕获内核启动错误（架构/编译不匹配时能立刻暴露）
   
   std::vector<T> h_output(blocks);
   RUNTIME_CHECK(cudaMemcpy(h_output.data(), d_output, blocks * sizeof(T), cudaMemcpyDeviceToHost));
@@ -174,6 +175,7 @@ void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
   dim3 blocks(blocks_x, query_heads, batch_size);
   
   flashAttentionKernel<<<blocks, threads>>>(d_q, d_k, d_v, d_o,batch_size, target_seq_len, src_seq_len,query_heads, kv_heads, head_dim, is_causal);
+  RUNTIME_CHECK(cudaGetLastError());  // 捕获内核启动错误
   
   RUNTIME_CHECK(cudaMemcpy(h_o.data(), d_o, q_size * sizeof(T), cudaMemcpyDeviceToHost));
   
